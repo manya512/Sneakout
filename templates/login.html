@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SneakOut · Sign In</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .auth-bg {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--so-bg);
+    position: relative;
+    overflow: hidden;
+  }
+  .auth-blob {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(80px);
+    pointer-events: none;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--so-card);
+    border: 1px solid var(--so-border);
+    border-radius: 24px;
+    padding: 32px 28px;
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 0 60px rgba(157,123,255,0.12), 0 24px 64px rgba(0,0,0,0.4);
+  }
+  .auth-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .auth-brand-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #9d7bff, #6b4fc8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 0 20px rgba(157,123,255,0.4);
+  }
+  .auth-title { font-weight: 700; font-size: 22px; margin: 0 0 4px; }
+  .auth-sub { font-size: 13px; color: var(--so-muted); margin: 0; }
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    display: block;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--so-muted); margin-bottom: 6px;
+  }
+  .form-input {
+    width: 100%; padding: 13px 16px;
+    background: rgba(157,123,255,0.06);
+    border: 1px solid var(--so-border);
+    border-radius: 12px;
+    color: var(--so-text); font-family: inherit; font-size: 14px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-input::placeholder { color: rgba(123,111,160,0.5); }
+  .form-input:focus {
+    border-color: var(--so-glow);
+    box-shadow: 0 0 0 3px rgba(157,123,255,0.15);
+  }
+  .auth-error {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13px; color: #ef4444;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .auth-success {
+    background: rgba(79,195,161,0.1);
+    border: 1px solid rgba(79,195,161,0.3);
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13px; color: #4fc3a1;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .auth-btn {
+    width: 100%; padding: 15px;
+    background: linear-gradient(135deg, #9d7bff, #6b4fc8);
+    border-radius: 14px; border: none; cursor: pointer;
+    color: #0d0b1a; font-weight: 700; font-size: 14px;
+    letter-spacing: 0.06em;
+    box-shadow: 0 0 24px rgba(157,123,255,0.4);
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+  }
+  .auth-btn:hover { transform: translateY(-1px); box-shadow: 0 0 32px rgba(157,123,255,0.55); }
+  .auth-btn:active { transform: translateY(0); }
+  .auth-divider {
+    display: flex; align-items: center; gap: 12px;
+    margin: 20px 0; color: var(--so-muted); font-size: 12px;
+  }
+  .auth-divider::before, .auth-divider::after {
+    content: ""; flex: 1; height: 1px; background: var(--so-border);
+  }
+  .auth-link-row {
+    text-align: center; font-size: 13px; color: var(--so-muted);
+  }
+  .auth-link { color: var(--so-glow); font-weight: 600; }
+  .admin-note {
+    margin-top: 20px;
+    background: rgba(157,123,255,0.06);
+    border: 1px solid rgba(157,123,255,0.18);
+    border-radius: 12px; padding: 12px 14px;
+    font-size: 12px; color: var(--so-muted); line-height: 1.5;
+  }
+  .admin-note strong { color: var(--so-glow); }
+</style>
+</head>
+<body>
+<div class="auth-bg">
+  <!-- Animated background blobs -->
+  <div class="auth-blob" style="width:300px;height:300px;background:rgba(157,123,255,0.12);top:-60px;right:-80px;animation:blobMove1 8s ease-in-out infinite;"></div>
+  <div class="auth-blob" style="width:200px;height:200px;background:rgba(79,195,161,0.07);bottom:60px;left:-60px;animation:blobMove2 10s ease-in-out infinite;"></div>
+
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-brand-icon">⚡</div>
+      <div>
+        <h1 style="font-weight:700;font-size:18px;margin:0;font-family:'Space Grotesk',sans-serif">SneakOut</h1>
+        <p style="font-size:11px;color:var(--so-muted);margin:0">Your college timetable, intelligent.</p>
+      </div>
+    </div>
+
+    <h2 class="auth-title">Welcome back</h2>
+    <p class="auth-sub">Sign in with your SSN email to continue.</p>
+
+    <div style="height:20px"></div>
+
+    {% if registered %}
+    <div class="auth-success">✅ Account created! Sign in below.</div>
+    {% endif %}
+
+    {% if error %}
+    <div class="auth-error">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login" id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="email">SSN Email</label>
+        <input class="form-input" type="email" id="email" name="email"
+               placeholder="yourname@ssn.edu.in" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div style="position:relative">
+          <input class="form-input" type="password" id="password" name="password"
+                 placeholder="Enter password" required autocomplete="current-password" style="padding-right:48px">
+          <button type="button" onclick="togglePwd()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--so-muted);font-size:16px" id="pwd-toggle">👁</button>
+        </div>
+      </div>
+
+      <div style="height:8px"></div>
+      <button type="submit" class="auth-btn" id="login-btn">Sign In →</button>
+    </form>
+
+    <div class="auth-divider">or</div>
+
+    <div class="auth-link-row">
+      New to SneakOut? <a href="/register" class="auth-link">Create account</a>
+    </div>
+
+    <div class="admin-note">
+      🛡️ <strong>Want admin access?</strong> Email
+      <strong><a href="mailto:{{ admin_contact }}" style="color:var(--so-glow)">{{ admin_contact }}</a></strong>
+      with your registered SSN email and reason.
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blobMove1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(-20px, 20px) scale(1.05); }
+}
+@keyframes blobMove2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(15px, -15px) scale(1.08); }
+}
+</style>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script>
+function togglePwd() {
+  const inp = document.getElementById("password");
+  const btn = document.getElementById("pwd-toggle");
+  if (inp.type === "password") { inp.type = "text"; btn.textContent = "🙈"; }
+  else { inp.type = "password"; btn.textContent = "👁"; }
+}
+document.getElementById("login-form").addEventListener("submit", function() {
+  const btn = document.getElementById("login-btn");
+  btn.textContent = "Signing in…";
+  btn.disabled = true;
+});
+</script>
+</body>
+</html>
