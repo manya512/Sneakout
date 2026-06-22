@@ -1,21 +1,10 @@
-import json
-import subprocess
 from datetime import datetime
-from pathlib import Path
 from functools import wraps
 
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# ── Paths ────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
-SCHEDULER_BIN = BASE_DIR / "bin" / "scheduler"
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
-
-USERS_FILE       = DATA_DIR / "users.json"
-OVERRIDES_FILE   = DATA_DIR / "overrides.json"
-MARKS_FILE       = DATA_DIR / "period_marks.json"
+import db
 
 # ── Config ───────────────────────────────────────────────────────────────────
 ADMIN_CONTACT = "hemanya2510408@ssn.edu.in"
@@ -24,64 +13,10 @@ SSN_DOMAIN    = "ssn.edu.in"
 app = Flask(__name__)
 app.secret_key = "sneakout-super-secret-key-change-before-deploy-2024"
 
-DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 FULL_DAY_NAMES = {
     "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday",
-    "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday",
+    "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday",
 }
-
-# ── In-memory hashset for O(1) email uniqueness checks ──────────────────────
-_registered_emails: set[str] = set()
-
-
-def _load_json(path: Path, default):
-    if not path.exists():
-        return default
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _save_json(path: Path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-
-def load_users() -> list:
-    return _load_json(USERS_FILE, {"users": []})["users"]
-
-
-def save_users(users: list):
-    _save_json(USERS_FILE, {"users": users})
-
-
-def init_email_set():
-    """Load all registered emails into the in-memory hashset at startup."""
-    global _registered_emails
-    _registered_emails = {u["email"].lower() for u in load_users()}
-
-
-def email_taken(email: str) -> bool:
-    return email.lower() in _registered_emails
-
-
-def register_email(email: str):
-    _registered_emails.add(email.lower())
-
-
-def load_overrides() -> dict:
-    return _load_json(OVERRIDES_FILE, {})
-
-
-def save_overrides(data: dict):
-    _save_json(OVERRIDES_FILE, data)
-
-
-def load_marks() -> dict:
-    return _load_json(MARKS_FILE, {})
-
-
-def save_marks(data: dict):
-    _save_json(MARKS_FILE, data)
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -105,16 +40,7 @@ def admin_required(f):
     return decorated
 
 
-# ── Engine & utilities ────────────────────────────────────────────────────────
-def run_engine(*args):
-    """Call the compiled C scheduler binary and parse JSON output."""
-    result = subprocess.run(
-        [str(SCHEDULER_BIN), *args],
-        capture_output=True, text=True, check=True,
-    )
-    return json.loads(result.stdout)
-
-
+# ── Utilities ────────────────────────────────────────────────────────────────
 def today_day_code():
     idx = datetime.now().weekday()   # Mon=0 … Sun=6
     return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx]
@@ -125,10 +51,6 @@ def fmt_date():
     return str(n.day) + " " + n.strftime("%b")
 
 
-def timetable_key(dept: str, year: str, section: str) -> str:
-    return f"{dept.upper()}-{year}-{section.upper()}"
-
-
 def time_to_min(t: str) -> int:
     if not t:
         return 0
@@ -136,25 +58,34 @@ def time_to_min(t: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def build_today_response(timeline: list, now: str, day: str) -> dict:
-    """Build /api/today-style dict from an admin-defined timeline list."""
-    now_min = time_to_min(now)
+def build_day_response(timeline: list, day: str, now: str | None = None) -> dict:
+    """Compute current/next/progress + counts for a timeline list."""
+    now_min = time_to_min(now) if now else -1
     current = next_item = None
-    class_count = free_count = 0
+    class_count = free_count = lab_count = 0
+    unique_codes = set()
 
     for item in timeline:
         s = time_to_min(item.get("startTime", ""))
         e = time_to_min(item.get("endTime", ""))
-        item["isCurrent"] = s <= now_min < e
-        if item.get("type") == "free":
+        is_free = item.get("type") == "free"
+
+        if is_free:
             free_count += 1
         else:
             class_count += 1
-            if item["isCurrent"] and current is None:
-                current = item
+            if item.get("code"):
+                unique_codes.add(item["code"])
+        if item.get("type") == "lab":
+            lab_count += 1
+
+        item["isCurrent"] = (not is_free) and now_min >= 0 and s <= now_min < e
+        if item["isCurrent"] and current is None:
+            current = item
 
     for item in timeline:
-        if time_to_min(item.get("startTime", "")) > now_min and item.get("type") != "free":
+        if (time_to_min(item.get("startTime", "")) > now_min
+                and item.get("type") != "free"):
             next_item = item
             break
 
@@ -169,6 +100,8 @@ def build_today_response(timeline: list, now: str, day: str) -> dict:
         "timeline": timeline,
         "classCount": class_count,
         "freeCount": free_count,
+        "labCount": lab_count,
+        "uniqueSubjects": len(unique_codes),
         "current": current,
         "next": next_item,
         "progressPercent": progress_percent,
@@ -194,8 +127,7 @@ def login_page():
     if request.method == "POST":
         email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        users    = load_users()
-        user     = next((u for u in users if u["email"] == email), None)
+        user     = db.get_user(email)
 
         if not user or not check_password_hash(user["password_hash"], password):
             error = "Invalid email or password."
@@ -203,9 +135,9 @@ def login_page():
             session["user_email"]   = user["email"]
             session["user_name"]    = user["name"]
             session["user_role"]    = user["role"]
-            session["user_dept"]    = user.get("dept", "")
-            session["user_year"]    = user.get("year", "")
-            session["user_section"] = user.get("section", "")
+            session["user_dept"]    = user.get("dept", "") or ""
+            session["user_year"]    = user.get("year", "") or ""
+            session["user_section"] = user.get("section", "") or ""
             return redirect(url_for("today_page"))
 
     return render_template("login.html", error=error, registered=registered,
@@ -229,7 +161,7 @@ def register_page():
 
         if not email.endswith(f"@{SSN_DOMAIN}"):
             error = f"Only @{SSN_DOMAIN} email addresses are allowed."
-        elif email_taken(email):
+        elif db.email_exists(email):
             error = "An account with this email already exists."
         elif not name:
             error = "Full name is required."
@@ -240,18 +172,11 @@ def register_page():
         elif not dept or not year or not section:
             error = "Please select your department, year, and section."
         else:
-            users = load_users()
-            users.append({
-                "email":         email,
-                "name":          name,
-                "role":          "user",
-                "dept":          dept,
-                "year":          year,
-                "section":       section,
-                "password_hash": generate_password_hash(password),
-            })
-            save_users(users)
-            register_email(email)   # ← add to in-memory hashset
+            db.create_user(
+                email=email, name=name, role="user",
+                dept=dept, year=year, section=section,
+                password_hash=generate_password_hash(password),
+            )
             return redirect(url_for("login_page") + "?registered=1")
 
     return render_template("register.html", error=error, ssn_domain=SSN_DOMAIN)
@@ -317,27 +242,20 @@ def api_today():
     day     = today_day_code()
     now     = request.args.get("time") or datetime.now().strftime("%H:%M")
 
-    overrides = load_overrides()
-    key = timetable_key(dept, year, section)
-
-    if key in overrides and day in overrides[key]:
-        data = build_today_response(overrides[key][day], now, day)
-    elif day == "Sun":
-        data = run_engine("day", "Mon")
-        data.update({"timeline": [], "classCount": 0, "freeCount": 0,
-                     "current": None, "next": None, "day": "Sun"})
+    if day == "Sun":
+        data = {
+            "day": "Sun", "timeline": [], "classCount": 0, "freeCount": 0,
+            "labCount": 0, "uniqueSubjects": 0,
+            "current": None, "next": None, "progressPercent": 0,
+        }
     else:
-        data = run_engine("today", now, day)
+        timeline = db.get_timeline(dept, year, section, day)
+        data = build_day_response(timeline, day, now)
 
-    data["dayFullName"] = {
-        "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday",
-        "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday",
-    }.get(data.get("day", day), day)
+    data["dayFullName"] = FULL_DAY_NAMES.get(data.get("day", day), day)
     data["date"] = fmt_date()
 
-    # Attach per-user period marks
-    marks = load_marks()
-    user_marks = marks.get(session["user_email"], {})
+    user_marks = db.get_marks_for_user(session["user_email"])
     date_prefix = datetime.now().strftime("%Y-%m-%d") + f"-{day}"
     for i, item in enumerate(data.get("timeline", [])):
         mk = f"{date_prefix}-{i}"
@@ -350,26 +268,15 @@ def api_today():
 @app.route("/api/day/<day>")
 @login_required
 def api_day(day):
-    if day not in FULL_DAY_NAMES:
+    if day not in FULL_DAY_NAMES or day == "Sun":
         return jsonify({"error": "unknown day"}), 404
 
     dept    = session.get("user_dept", "")
     year    = session.get("user_year", "")
     section = session.get("user_section", "")
-    key     = timetable_key(dept, year, section)
-    overrides = load_overrides()
 
-    if key in overrides and day in overrides[key]:
-        tl = overrides[key][day]
-        data = {
-            "day": day, "timeline": tl,
-            "classCount": sum(1 for t in tl if t.get("type") != "free"),
-            "freeCount":  sum(1 for t in tl if t.get("type") == "free"),
-            "labCount":   sum(1 for t in tl if t.get("type") == "lab"),
-        }
-    else:
-        data = run_engine("day", day)
-
+    timeline = db.get_timeline(dept, year, section, day)
+    data = build_day_response(timeline, day, now=None)
     data["dayFullName"] = FULL_DAY_NAMES[day]
     data["isToday"] = day == today_day_code()
     return jsonify(data)
@@ -378,7 +285,7 @@ def api_day(day):
 @app.route("/api/week")
 @login_required
 def api_week():
-    data = run_engine("week")
+    data = db.get_week_summary()
     data["todayDay"] = today_day_code()
     return jsonify(data)
 
@@ -389,9 +296,8 @@ def api_week():
 def api_admin_timetable_get():
     dept    = request.args.get("dept", "")
     year    = request.args.get("year", "")
-    section = request.args.get("section", "")
-    key = timetable_key(dept, year, section)
-    return jsonify(load_overrides().get(key, {}))
+    section = request.args.get("section", "").upper()
+    return jsonify(db.get_section_timetable(dept, year, section))
 
 
 @app.route("/api/admin/timetable", methods=["POST"])
@@ -407,11 +313,12 @@ def api_admin_timetable_save():
     if not dept or not year or not section or not day:
         return jsonify({"error": "Missing fields"}), 400
 
-    key = timetable_key(dept, year, section)
-    overrides = load_overrides()
-    overrides.setdefault(key, {})[day] = slots
-    save_overrides(overrides)
-    return jsonify({"ok": True, "key": key, "day": day})
+    db.save_timetable(dept, year, section, day, slots)
+    return jsonify({
+        "ok": True,
+        "key": f"{dept}-{year}-{section}",
+        "day": day,
+    })
 
 
 # ── Period mark API ───────────────────────────────────────────────────────────
@@ -419,22 +326,13 @@ def api_admin_timetable_save():
 @login_required
 def api_period_mark():
     body   = request.get_json(force=True)
-    mk     = body.get("key")          # "2024-06-20-Mon-2"
-    status = body.get("status")       # "free" | "taken" | null → unmark
+    mk     = body.get("key")
+    status = body.get("status")
 
     if not mk:
         return jsonify({"error": "Missing key"}), 400
 
-    marks = load_marks()
-    email = session["user_email"]
-    marks.setdefault(email, {})
-
-    if status is None:
-        marks[email].pop(mk, None)
-    else:
-        marks[email][mk] = status
-
-    save_marks(marks)
+    db.set_mark(session["user_email"], mk, status)
     return jsonify({"ok": True, "status": status})
 
 
@@ -443,39 +341,16 @@ def api_period_mark():
 @login_required
 def api_freeboard():
     day = today_day_code()
-    overrides = load_overrides()
-    result = []
-
-    for key, days_data in overrides.items():
-        if day not in days_data:
-            continue
-        parts = key.split("-", 2)          # ["CSE", "2", "A"]
-        if len(parts) < 3:
-            continue
-        dept, year, section = parts
-        free_slots = [s for s in days_data[day] if s.get("type") == "free"]
-        if free_slots:
-            result.append({
-                "dept": dept, "year": year, "section": section,
-                "key": key, "freeSlots": free_slots,
-            })
-
     return jsonify({
         "day": day,
         "dayFullName": FULL_DAY_NAMES.get(day, day),
         "date": fmt_date(),
-        "departments": result,
+        "departments": db.freeboard_today(day),
     })
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
-# Load registered emails into in-memory hashset when module is imported
-init_email_set()
+db.init_db()
 
 if __name__ == "__main__":
-    if not SCHEDULER_BIN.exists():
-        print(
-            f"⚠  Scheduler binary missing at {SCHEDULER_BIN}. "
-            f"Build with: gcc -O2 -o bin/scheduler c_src/scheduler.c"
-        )
     app.run(host="0.0.0.0", port=5000, debug=True)
