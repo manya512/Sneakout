@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SneakOut · Create Account</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .auth-bg {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--so-bg);
+    position: relative;
+    overflow: hidden;
+  }
+  .auth-blob {
+    position: absolute; border-radius: 999px;
+    filter: blur(80px); pointer-events: none;
+  }
+  .auth-card {
+    width: 100%; max-width: 400px;
+    background: var(--so-card);
+    border: 1px solid var(--so-border);
+    border-radius: 24px; padding: 32px 28px;
+    position: relative; z-index: 1;
+    box-shadow: 0 0 60px rgba(157,123,255,0.12), 0 24px 64px rgba(0,0,0,0.4);
+  }
+  .auth-title { font-weight: 700; font-size: 22px; margin: 0 0 4px; }
+  .auth-sub { font-size: 13px; color: var(--so-muted); margin: 0 0 24px; }
+  .form-group { margin-bottom: 14px; }
+  .form-label {
+    display: block; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--so-muted); margin-bottom: 6px;
+  }
+  .form-input {
+    width: 100%; padding: 12px 16px;
+    background: rgba(157,123,255,0.06);
+    border: 1px solid var(--so-border); border-radius: 12px;
+    color: var(--so-text); font-family: inherit; font-size: 14px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none; appearance: none;
+  }
+  .form-input::placeholder { color: rgba(123,111,160,0.5); }
+  .form-input:focus {
+    border-color: var(--so-glow);
+    box-shadow: 0 0 0 3px rgba(157,123,255,0.15);
+  }
+  .form-select {
+    width: 100%; padding: 12px 16px;
+    background: rgba(157,123,255,0.06);
+    border: 1px solid var(--so-border); border-radius: 12px;
+    color: var(--so-text); font-family: inherit; font-size: 14px;
+    outline: none; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237b6fa0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+  }
+  .form-select:focus { border-color: var(--so-glow); box-shadow: 0 0 0 3px rgba(157,123,255,0.15); }
+  .form-select option { background: #1c1530; color: var(--so-text); }
+  .form-row { display: flex; gap: 10px; }
+  .form-row .form-group { flex: 1; }
+  .auth-error {
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; color: #ef4444;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .auth-btn {
+    width: 100%; padding: 15px;
+    background: linear-gradient(135deg, #9d7bff, #6b4fc8);
+    border-radius: 14px; border: none; cursor: pointer;
+    color: #0d0b1a; font-weight: 700; font-size: 14px;
+    letter-spacing: 0.06em;
+    box-shadow: 0 0 24px rgba(157,123,255,0.4);
+    transition: transform 0.15s, box-shadow 0.15s; font-family: inherit;
+  }
+  .auth-btn:hover { transform: translateY(-1px); box-shadow: 0 0 32px rgba(157,123,255,0.55); }
+  .auth-link-row { text-align: center; font-size: 13px; color: var(--so-muted); margin-top: 16px; }
+  .auth-link { color: var(--so-glow); font-weight: 600; }
+  .domain-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    background: rgba(157,123,255,0.12); color: var(--so-glow);
+    font-size: 11px; font-weight: 600; margin-left: 4px;
+  }
+  .section-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+  .section-btn {
+    padding: 10px 0; border-radius: 10px; font-weight: 700; font-size: 15px;
+    background: rgba(157,123,255,0.06); border: 1px solid var(--so-border);
+    color: var(--so-muted); cursor: pointer; transition: all 0.15s;
+  }
+  .section-btn.selected {
+    background: rgba(157,123,255,0.18); border-color: var(--so-glow);
+    color: var(--so-glow); box-shadow: 0 0 12px rgba(157,123,255,0.2);
+  }
+</style>
+</head>
+<body>
+<div class="auth-bg">
+  <div class="auth-blob" style="width:280px;height:280px;background:rgba(157,123,255,0.1);top:-40px;left:-60px;animation:blobMove1 9s ease-in-out infinite;"></div>
+  <div class="auth-blob" style="width:180px;height:180px;background:rgba(247,183,49,0.06);bottom:40px;right:-40px;animation:blobMove2 11s ease-in-out infinite;"></div>
+
+  <div class="auth-card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+      <a href="/login" style="width:32px;height:32px;border-radius:8px;background:rgba(157,123,255,0.08);border:1px solid var(--so-border);display:flex;align-items:center;justify-content:center;color:var(--so-muted);font-size:16px">←</a>
+      <div>
+        <h1 style="font-weight:700;font-size:16px;margin:0;font-family:'Space Grotesk',sans-serif">Create Account</h1>
+        <p style="font-size:11px;color:var(--so-muted);margin:0">SSN students only <span class="domain-badge">@ssn.edu.in</span></p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="auth-error">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/register" id="reg-form">
+      <div class="form-group">
+        <label class="form-label" for="name">Full Name</label>
+        <input class="form-input" type="text" id="name" name="name"
+               placeholder="Your full name" required autocomplete="name">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="email">
+          SSN Email
+          <span class="domain-badge">@ssn.edu.in only</span>
+        </label>
+        <input class="form-input" type="email" id="email" name="email"
+               placeholder="yourname@ssn.edu.in" required autocomplete="email"
+               oninput="validateEmail(this)">
+        <p id="email-hint" style="font-size:11px;margin:4px 0 0;color:rgba(123,111,160,0.6)"></p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" type="password" id="password" name="password"
+                 placeholder="Min 6 chars" required autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm">Confirm</label>
+          <input class="form-input" type="password" id="confirm" name="confirm"
+                 placeholder="Repeat" required autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <select class="form-select" name="dept" id="dept" required>
+          <option value="">Select department…</option>
+          <option value="CSE">💻 Computer Science &amp; Engineering</option>
+          <option value="ECE">📡 Electronics &amp; Communication</option>
+          <option value="MECH">⚙️ Mechanical Engineering</option>
+          <option value="CIVIL">🏗️ Civil Engineering</option>
+          <option value="EEE">⚡ Electrical &amp; Electronics</option>
+          <option value="IT">🌐 Information Technology</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Year</label>
+          <select class="form-select" name="year" id="year" required>
+            <option value="">Year…</option>
+            <option value="1">1st Year</option>
+            <option value="2">2nd Year</option>
+            <option value="3">3rd Year</option>
+            <option value="4">4th Year</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Section</label>
+          <select class="form-select" name="section" id="section" required>
+            <option value="">Sec…</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="height:8px"></div>
+      <button type="submit" class="auth-btn" id="reg-btn">Create Account →</button>
+    </form>
+
+    <div class="auth-link-row">
+      Already have an account? <a href="/login" class="auth-link">Sign in</a>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes blobMove1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(20px, 15px) scale(1.04); }
+}
+@keyframes blobMove2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(-15px, -20px) scale(1.06); }
+}
+</style>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script>
+function validateEmail(inp) {
+  const hint = document.getElementById("email-hint");
+  const val = inp.value.toLowerCase();
+  if (!val) { hint.textContent = ""; return; }
+  if (val.endsWith("@ssn.edu.in")) {
+    hint.textContent = "✓ Valid SSN email";
+    hint.style.color = "#4fc3a1";
+    inp.style.borderColor = "#4fc3a1";
+  } else if (val.includes("@")) {
+    hint.textContent = "✗ Must end with @ssn.edu.in";
+    hint.style.color = "#ef4444";
+    inp.style.borderColor = "#ef4444";
+  } else {
+    hint.textContent = "";
+    inp.style.borderColor = "";
+  }
+}
+document.getElementById("reg-form").addEventListener("submit", function(e) {
+  const btn = document.getElementById("reg-btn");
+  btn.textContent = "Creating account…";
+  btn.disabled = true;
+});
+</script>
+</body>
+</html>

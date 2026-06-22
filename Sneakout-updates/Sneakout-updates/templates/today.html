@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SneakOut · Today</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .mark-row {
+    display: flex; gap: 6px; margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid rgba(157,123,255,0.1);
+  }
+  .mark-btn {
+    flex: 1; padding: 7px 0; border-radius: 8px; font-size: 11px;
+    font-weight: 600; cursor: pointer; font-family: inherit;
+    border: 1px solid var(--so-border); color: var(--so-muted);
+    background: rgba(157,123,255,0.04); transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .mark-btn:hover { border-color: var(--so-glow); color: var(--so-glow); }
+  .mark-btn.active-free {
+    background: rgba(79,195,161,0.12); border-color: rgba(79,195,161,0.4);
+    color: #4fc3a1;
+  }
+  .mark-btn.active-taken {
+    background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3);
+    color: #ef4444;
+  }
+  .toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(40px);
+    background: #1c1530; border: 1px solid var(--so-border); border-radius: 10px;
+    padding: 10px 18px; font-size: 12px; font-weight: 600; z-index: 999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); transition: transform 0.25s ease;
+    pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.green { border-color: rgba(79,195,161,0.4); color: #4fc3a1; }
+  .toast.red   { border-color: rgba(239,68,68,0.3); color: #ef4444; }
+  .user-chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px;
+    background: rgba(157,123,255,0.1); border: 1px solid var(--so-border);
+    font-size: 11px; font-weight: 600;
+  }
+  .admin-chip {
+    background: linear-gradient(135deg,rgba(157,123,255,0.2),rgba(107,79,200,0.2));
+    border-color: rgba(157,123,255,0.4); color: var(--so-glow);
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="header">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div class="brand"><div class="brand-icon">⚡</div><span class="brand-name">SneakOut</span></div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-top:2px">
+          <span class="font-heading" style="font-weight:600;font-size:20px" id="day-name">—</span>
+          <span class="font-heading" style="font-size:20px;color:var(--so-glow)" id="day-date">—</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="pill" id="done-pill">0/0 <span style="color:var(--so-muted);font-weight:400;margin-left:4px">done</span></div>
+        {% if user_role == "admin" %}
+        <a href="/admin" class="user-chip admin-chip" title="Admin Panel">🛡️</a>
+        {% endif %}
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--so-muted);margin-bottom:4px">
+        <span>08:00</span>
+        <span style="font-weight:600;color:var(--so-glow)" id="progress-label">0/0 classes · 0 free periods</span>
+        <span>17:00</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="day-progress" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="content">
+    <section style="margin-bottom:20px">
+      <div class="card glow-border fade-in" style="padding:16px" id="nownext-card">
+        <div style="text-align:center;color:var(--so-muted);padding:20px 0">Loading…</div>
+      </div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 class="section-title" style="margin:0">Today's Schedule</h2>
+        <span style="font-size:10px;padding:4px 8px;border-radius:4px;background:rgba(157,123,255,0.1);color:var(--so-muted)" id="class-count-badge">0 classes</span>
+      </div>
+      <div id="timeline-mount"></div>
+    </section>
+  </div>
+
+  <div id="bottom-nav-mount"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script>
+window.USER_ROLE = "{{ user_role }}";
+let CURRENT_VIEW = "now";
+
+function showToast(msg, cls="green") {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.className = `toast ${cls} show`;
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+/* ── Mark period ──────────────────────────────────────────────────── */
+async function markPeriod(key, status, btnEl) {
+  const allBtns = btnEl.parentElement.querySelectorAll(".mark-btn");
+  allBtns.forEach(b => b.disabled = true);
+
+  // Toggle: clicking the same status un-marks it
+  const current = btnEl.dataset.current;
+  const newStatus = current === status ? null : status;
+
+  try {
+    const res = await fetch("/api/period/mark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, status: newStatus }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Update button visual
+      allBtns.forEach(b => {
+        b.classList.remove("active-free", "active-taken");
+        b.dataset.current = null;
+      });
+      if (newStatus) {
+        btnEl.classList.add(newStatus === "free" ? "active-free" : "active-taken");
+        btnEl.dataset.current = newStatus;
+      }
+      showToast(newStatus === "free" ? "✅ Marked as Free" : newStatus === "taken" ? "🔴 Marked as Taken" : "Unmarked");
+    }
+  } catch(e) {
+    showToast("Failed to save mark", "red");
+  }
+  allBtns.forEach(b => b.disabled = false);
+}
+
+/* ── Timeline item with mark buttons ─────────────────────────────── */
+function todayTimelineItem(entry, isLast) {
+  const accent = TYPE_COLORS[entry.type] || "#9d7bff";
+  const isFree = entry.type === "free";
+  const mark   = entry.userMark;
+  const mkKey  = entry.markKey || "";
+
+  const markRowHTML = (!isFree && mkKey) ? `
+    <div class="mark-row">
+      <button class="mark-btn ${mark==='free'?'active-free':''}" data-current="${mark||''}"
+              onclick="markPeriod('${mkKey}','free',this)">🟢 Free</button>
+      <button class="mark-btn ${mark==='taken'?'active-taken':''}" data-current="${mark||''}"
+              onclick="markPeriod('${mkKey}','taken',this)">🔴 Taken</button>
+    </div>` : "";
+
+  if (isFree) {
+    return `
+    <div class="timeline-row">
+      <div class="timeline-rail">
+        <span class="timeline-time">${entry.startTime}</span>
+        <div class="timeline-dot-wrap">
+          <div class="timeline-dot" style="background:${accent}"></div>
+          ${!isLast ? `<div class="timeline-line"></div>` : ""}
+        </div>
+      </div>
+      <div class="timeline-card-wrap">
+        <div class="timeline-card free">
+          <div style="width:36px;height:36px;border-radius:8px;background:rgba(58,42,92,0.4);display:flex;align-items:center;justify-content:center;color:var(--so-muted)">${ICONS.door}</div>
+          <div>
+            <p style="font-weight:500;font-size:14px;color:var(--so-muted);margin:0">Free Period</p>
+            <p style="font-size:11px;color:rgba(123,111,160,0.6);margin:2px 0 0">${entry.startTime} – ${entry.endTime}</p>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="timeline-row">
+    <div class="timeline-rail">
+      <span class="timeline-time ${entry.isCurrent ? "current" : ""}">${entry.startTime}</span>
+      <div class="timeline-dot-wrap">
+        <div class="timeline-dot ${entry.isCurrent ? "pulse" : ""}" style="background:${accent}"></div>
+        ${!isLast ? `<div class="timeline-line"></div>` : ""}
+      </div>
+    </div>
+    <div class="timeline-card-wrap">
+      <div class="timeline-card ${entry.isCurrent ? "current" : ""}" style="${mark==='free'?'border-color:rgba(79,195,161,0.3);background:rgba(79,195,161,0.04)':mark==='taken'?'border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.03)':''}">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span class="type-tag" style="background:${accent}22;color:${accent};border:1px solid ${accent}44">${TYPE_LABELS[entry.type]||entry.type}</span>
+              <span style="font-size:10px;color:var(--so-muted)">${entry.code||""}</span>
+              ${entry.isCurrent ? `<span class="now-tag">NOW</span>` : ""}
+              ${mark === "free"  ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(79,195,161,0.15);color:#4fc3a1;font-weight:700">YOU'RE FREE</span>` : ""}
+              ${mark === "taken" ? `<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(239,68,68,0.1);color:#ef4444;font-weight:700">ATTENDING</span>` : ""}
+            </div>
+            <p style="font-weight:600;font-size:14px;margin:0">${entry.subject||""}</p>
+            <p style="font-size:11px;color:var(--so-muted);margin:2px 0 0">${entry.faculty||""}</p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:600;font-size:12px;color:${accent}">${entry.startTime}</div>
+            <div style="font-size:10px;color:rgba(123,111,160,0.7)">${entry.endTime}</div>
+            <div style="font-size:10px;margin-top:4px;padding:2px 6px;border-radius:6px;background:rgba(58,42,92,0.5);color:var(--so-muted)">${entry.room||""}</div>
+          </div>
+        </div>
+        ${markRowHTML}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── Now/Next card ────────────────────────────────────────────────── */
+function renderNowNext(data) {
+  const mount = document.getElementById("nownext-card");
+  if (!data.current && !data.next) {
+    mount.innerHTML = `<div style="text-align:center;color:var(--so-muted);padding:20px 0">No classes right now 🎉</div>`;
+    return;
+  }
+  const displayed = CURRENT_VIEW === "now" ? (data.current || data.next) : (data.next || data.current);
+  const accent = TYPE_COLORS[displayed.type] || "#9d7bff";
+  const showProgress = CURRENT_VIEW === "now" && data.current;
+
+  let progressHTML = "";
+  if (showProgress) {
+    const [sh, sm] = data.current.startTime.split(":").map(Number);
+    const [eh, em] = data.current.endTime.split(":").map(Number);
+    const total = (eh*60+em) - (sh*60+sm);
+    const elapsed = Math.round((data.progressPercent / 100) * total);
+    progressHTML = `
+    <div style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--so-muted);margin-bottom:6px">
+        <span>${elapsed}m elapsed</span><span style="font-weight:600;color:var(--so-glow)">${total-elapsed}m left</span>
+      </div>
+      <div class="progress-track" style="height:6px"><div class="progress-fill" style="width:${data.progressPercent}%;background:linear-gradient(90deg,var(--so-glow),${accent})"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--so-muted);margin-top:4px">
+        <span>${data.current.startTime}</span><span>${data.current.endTime}</span>
+      </div>
+    </div>`;
+  }
+
+  const nextLine = CURRENT_VIEW === "now" && data.next
+    ? `<button onclick="CURRENT_VIEW='next';renderNowNext(window.__todayData)" style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:11px;color:var(--so-muted)">→ Up next: <span style="color:var(--so-text)">${data.next.subject}</span></button>`
+    : "";
+
+  mount.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <div class="nownext-tabs">
+        <button class="nownext-tab ${CURRENT_VIEW==='now'?'active':''}" onclick="CURRENT_VIEW='now';renderNowNext(window.__todayData)">Now</button>
+        <button class="nownext-tab ${CURRENT_VIEW==='next'?'active':''}" onclick="CURRENT_VIEW='next';renderNowNext(window.__todayData)">Next</button>
+      </div>
+      ${CURRENT_VIEW==="now" ? `<div style="display:flex;align-items:center;gap:6px;margin-left:auto"><div class="timeline-dot pulse" style="background:var(--so-glow)"></div><span style="font-size:11px;color:var(--so-muted)">Live</span></div>` : ""}
+    </div>
+    <div class="slide-up" style="display:flex;justify-content:space-between;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="type-tag" style="background:${accent}22;color:${accent};border:1px solid ${accent}44">${TYPE_LABELS[displayed.type]||displayed.type}</span>
+          <span style="font-size:11px;color:var(--so-muted)">${displayed.code||""}</span>
+        </div>
+        <h2 style="font-weight:600;font-size:18px;margin:0">${displayed.subject||""}</h2>
+        <p style="font-size:12px;color:var(--so-muted);margin:2px 0 0">${displayed.faculty||""}</p>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-weight:700;font-size:16px;color:${accent}">${displayed.startTime}</div>
+        <div style="font-size:11px;color:var(--so-muted)">– ${displayed.endTime}</div>
+        <div style="font-size:10px;margin-top:4px;padding:2px 6px;border-radius:6px;background:rgba(157,123,255,0.1);color:var(--so-muted)">${displayed.room||""}</div>
+      </div>
+    </div>
+    ${progressHTML}
+    ${nextLine}`;
+}
+
+/* ── Load ─────────────────────────────────────────────────────────── */
+async function loadToday() {
+  renderBottomNav("/today");
+  const res = await fetch("/api/today");
+  const data = await res.json();
+  window.__todayData = data;
+
+  document.getElementById("day-name").textContent  = data.dayFullName + ",";
+  document.getElementById("day-date").textContent  = data.date || "";
+  document.getElementById("done-pill").innerHTML   =
+    `${data.classCount>0?Math.min(data.classCount,2):0}/${data.classCount} <span style="color:var(--so-muted);font-weight:400;margin-left:4px">done</span>`;
+  document.getElementById("progress-label").textContent =
+    `${data.classCount} classes · ${data.freeCount} free ${data.freeCount===1?"period":"periods"}`;
+  document.getElementById("day-progress").style.width = `${data.progressPercent||38}%`;
+  document.getElementById("class-count-badge").textContent = `${data.classCount} classes`;
+
+  renderNowNext(data);
+
+  const tlMount = document.getElementById("timeline-mount");
+  tlMount.innerHTML = (data.timeline||[]).map((e, i) =>
+    todayTimelineItem(e, i === data.timeline.length - 1)
+  ).join("");
+}
+
+loadToday();
+</script>
+</body>
+</html>

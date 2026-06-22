@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SneakOut · Week</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="brand-icon">⚡</div><span class="brand-name">SneakOut</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <div style="color:var(--so-glow);font-weight:600;font-size:12px">📅 Week View</div>
+        {% if user_role == "admin" %}
+        <a href="/admin" style="font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(157,123,255,0.15);border:1px solid rgba(157,123,255,0.3);color:var(--so-glow);font-weight:700">🛡️ ADMIN</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <section style="margin-bottom:20px">
+      <div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <button style="width:32px;height:32px;border-radius:8px;background:rgba(157,123,255,0.08);color:var(--so-muted)">‹</button>
+          <span style="font-size:12px;font-weight:600;color:var(--so-muted)">This Week</span>
+          <button style="width:32px;height:32px;border-radius:8px;background:rgba(157,123,255,0.08);color:var(--so-muted)">›</button>
+        </div>
+        <div class="day-grid" id="day-grid"></div>
+        <div class="heatmap" id="heatmap"></div>
+        <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:#9d7bff"></div><span style="font-size:10px;color:var(--so-muted)">Lecture</span></div>
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:#4fc3a1"></div><span style="font-size:10px;color:var(--so-muted)">Lab</span></div>
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:#f7b731"></div><span style="font-size:10px;color:var(--so-muted)">Tutorial</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <h2 style="font-weight:700;font-size:18px;margin:0" id="selected-day-name">—</h2>
+          <p style="font-size:11px;color:var(--so-muted);margin:2px 0 0" id="selected-day-stats">—</p>
+        </div>
+        <div id="today-badge"></div>
+      </div>
+      <div id="day-timeline-mount"></div>
+    </section>
+
+    <section style="margin-top:24px">
+      <h3 class="section-title" style="margin-bottom:12px">Week Summary</h3>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="week-summary"></div>
+    </section>
+  </div>
+
+  <div id="bottom-nav-mount"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script>
+window.USER_ROLE = "{{ user_role }}";
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const FULL = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday" };
+let selectedDay = "Mon";
+let todayDay = "Mon";
+let weekData = null;
+
+function renderDayGrid() {
+  document.getElementById("day-grid").innerHTML = DAYS.map(d => {
+    const active = d === selectedDay;
+    const isToday = d === todayDay;
+    return `<button class="day-chip ${active ? 'active' : isToday ? 'today' : ''}" onclick="selectDay('${d}')">${d}</button>`;
+  }).join("");
+}
+
+function renderHeatmap() {
+  if (!weekData) return;
+  document.getElementById("heatmap").innerHTML = weekData.days.map(d => {
+    const total = d.classCount + d.freeCount || 1;
+    const intensity = Math.min(1, d.classCount / 6);
+    return `<div class="heatmap-col" onclick="selectDay('${d.day}')" style="cursor:pointer;background:${d.day===selectedDay ? 'rgba(157,123,255,0.07)' : 'transparent'}">
+      <div class="heatmap-block" style="background:rgba(157,123,255,${0.15 + intensity*0.6})"></div>
+      <div class="heatmap-block" style="background:rgba(79,195,161,${d.labCount ? 0.5 : 0.05})"></div>
+    </div>`;
+  }).join("");
+}
+
+async function selectDay(day) {
+  selectedDay = day;
+  renderDayGrid();
+  renderHeatmap();
+  const res = await fetch(`/api/day/${day}`);
+  const data = await res.json();
+  document.getElementById("selected-day-name").textContent = FULL[day];
+  document.getElementById("selected-day-stats").textContent =
+    `${data.classCount} ${data.classCount === 1 ? "class" : "classes"}` +
+    (data.freeCount > 0 ? ` · ${data.freeCount} free ${data.freeCount === 1 ? "period" : "periods"}` : "");
+  document.getElementById("today-badge").innerHTML = data.isToday
+    ? `<div class="pill"><span style="width:6px;height:6px;border-radius:999px;background:var(--so-glow);display:inline-block"></span> TODAY</div>` : "";
+
+  const mount = document.getElementById("day-timeline-mount");
+  if (data.timeline.length === 0) {
+    mount.innerHTML = `<div class="empty-state"><span style="font-size:28px">🎉</span><p style="font-weight:600;color:var(--so-muted);margin:0">No classes today</p><p style="font-size:12px;color:rgba(123,111,160,0.6);margin:0">Enjoy your free day!</p></div>`;
+  } else {
+    mount.innerHTML = data.timeline.map((e, i) => timelineItemHTML(e, i === data.timeline.length - 1)).join("");
+  }
+}
+
+async function loadWeek() {
+  renderBottomNav("/week");
+  const res = await fetch("/api/week");
+  weekData = await res.json();
+  todayDay = weekData.todayDay;
+  selectedDay = DAYS.includes(todayDay) ? todayDay : "Mon";
+
+  document.getElementById("week-summary").innerHTML = `
+    <div class="stat-card"><span class="stat-value">${weekData.totalClasses}</span><span class="stat-label">Total Classes</span><span class="stat-unit">this week</span></div>
+    <div class="stat-card"><span class="stat-value">${weekData.totalFree}</span><span class="stat-label">Free Periods</span><span class="stat-unit">total</span></div>
+    <div class="stat-card"><span class="stat-value">${weekData.totalLabs}</span><span class="stat-label">Lab Sessions</span><span class="stat-unit">labs</span></div>
+  `;
+
+  renderDayGrid();
+  renderHeatmap();
+  selectDay(selectedDay);
+}
+
+loadWeek();
+</script>
+</body>
+</html>

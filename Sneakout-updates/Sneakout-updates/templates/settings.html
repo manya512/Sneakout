@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SneakOut · Settings</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="brand-icon">⚡</div><span class="brand-name">SneakOut</span>
+      <span style="margin-left:auto;font-weight:600;font-size:15px">Settings</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Profile card -->
+    <div class="card" style="padding:16px;display:flex;align-items:center;gap:12px;margin:16px 0 20px">
+      <div style="width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;background:linear-gradient(135deg,rgba(157,123,255,0.3),rgba(107,79,200,0.3));border:1px solid rgba(157,123,255,0.3);color:var(--so-glow);flex-shrink:0">
+        {{ user_name[0]|upper if user_name else "?" }}
+      </div>
+      <div style="flex:1;min-width:0">
+        <p style="font-weight:600;font-size:15px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ user_name }}</p>
+        <p style="font-size:11px;color:var(--so-muted);margin:2px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ user_email }}</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+          {% if user_role == "admin" %}
+          <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:linear-gradient(135deg,rgba(157,123,255,0.2),rgba(107,79,200,0.2));border:1px solid rgba(157,123,255,0.4);color:var(--so-glow);font-weight:700">🛡️ ADMIN</span>
+          {% else %}
+          <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(157,123,255,0.1);color:var(--so-glow)">{{ user_dept }}</span>
+          <span style="font-size:11px;color:var(--so-muted)">Year {{ user_year }} · Section {{ user_section }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <p class="settings-section-title">Notifications</p>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-icon">🔔</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">Class Reminders</p><p class="settings-desc" style="margin:0">Get notified 5 min before each class</p></div>
+          <div class="toggle on" id="t-notifs" onclick="toggle('t-notifs')"><div class="toggle-knob"></div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-icon">⚡</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">Haptic Feedback</p><p class="settings-desc" style="margin:0">Vibrate on transitions</p></div>
+          <div class="toggle on" id="t-vibe" onclick="toggle('t-vibe')"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <p class="settings-section-title">Display</p>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-icon">🎨</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">24-Hour Format</p><p class="settings-desc" style="margin:0">Show time in 24h format</p></div>
+          <div class="toggle on" id="t-24h" onclick="toggle('t-24h')"><div class="toggle-knob"></div></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-icon">🌙</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">Compact View</p><p class="settings-desc" style="margin:0">Denser timeline layout</p></div>
+          <div class="toggle" id="t-compact" onclick="toggle('t-compact')"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+    </div>
+
+    {% if user_role == "admin" %}
+    <div class="settings-section">
+      <p class="settings-section-title">Admin Tools</p>
+      <div class="settings-group">
+        <a href="/admin" class="settings-row" style="text-decoration:none">
+          <div class="settings-icon">🛡️</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">Timetable Editor</p><p class="settings-desc" style="margin:0">Add or edit class schedules</p></div>
+          <span style="color:var(--so-muted)">›</span>
+        </a>
+        <a href="/freeboard" class="settings-row" style="text-decoration:none">
+          <div class="settings-icon">📋</div>
+          <div style="flex:1"><p class="settings-label" style="margin:0">Free Board</p><p class="settings-desc" style="margin:0">View all departments' free periods</p></div>
+          <span style="color:var(--so-muted)">›</span>
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="settings-section">
+      <p class="settings-section-title">About</p>
+      <div class="settings-group">
+        <div class="settings-row"><div class="settings-icon">⭐</div><div style="flex:1"><p class="settings-label" style="margin:0">Rate SneakOut</p><p class="settings-desc" style="margin:0">Help us improve</p></div></div>
+        <div class="settings-row">
+          <div class="settings-icon">✉️</div>
+          <div style="flex:1">
+            <p class="settings-label" style="margin:0">Request Admin Access</p>
+            <p class="settings-desc" style="margin:0">Email <a href="mailto:{{ admin_contact }}" style="color:var(--so-glow)">{{ admin_contact }}</a></p>
+          </div>
+        </div>
+        <div class="settings-row"><div class="settings-icon">🛡️</div><div style="flex:1"><p class="settings-label" style="margin:0">Privacy Policy</p><p class="settings-desc" style="margin:0">How we handle your data</p></div></div>
+      </div>
+    </div>
+
+    <a href="/logout" style="display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;border-radius:16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#ef4444;font-weight:600;font-size:14px;margin:8px 0 16px;text-decoration:none">
+      Sign Out
+    </a>
+
+    <p style="text-align:center;font-size:11px;color:rgba(123,111,160,0.4);padding-bottom:8px">SneakOut v2.0.0 · Made with 💜 for SSN students</p>
+  </div>
+
+  <div id="bottom-nav-mount"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+<script>
+window.USER_ROLE = "{{ user_role }}";
+renderBottomNav("/settings");
+function toggle(id) {
+  document.getElementById(id).classList.toggle("on");
+}
+</script>
+</body>
+</html>
